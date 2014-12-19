@@ -1,0 +1,266 @@
+Name: Daniel Yao
+UCLA ID: 004-182-464
+
+Collaborators: N/A
+
+-------------------------------------------------------------------------------
+
+Response to Exercise 1:
+
+The name of the scheduling algorithm is: Round Robin, as the 4 processes run like 1,2,3,4,1,2,3,4...1,2,3,4
+
+
+(Exercise 2 is a coding exercise)
+Inside schedos-1.c:
+
+	Replace "while (1)
+		   sys_yield();"
+	with "sys_exit(0);"
+
+Inside schedos-kern.c:
+
+add 
+"else if (scheduling_algorithm == 1) {
+			int i;
+			pid_t highestPriority = 0;
+		while (1) {
+			for(i = 1; i < NPROCS; i++) {
+				if(proc_array[i].p_state == P_RUNNABLE) {
+					highestPriority = i;
+					break;
+				}
+			}
+			if(highestPriority != 0)
+				run(&proc_array[highestPriority]);
+		}
+	}"
+
+and change "scheduling_algorithm = 0;" on line 101 to "scheduling_algorithm = 1;" to test.
+
+
+Response to Exercise 3:
+
+Average turnaround time for scheduling_algorithm 0:
+Process 1: 1280 - 3  = 1277ms
+Process 2: 1280 - 2 = 1278ms
+Process 3: 1280 - 1 = 1279ms
+Process 4: 1280ms
+	Average turnaround time: (1277+1278+1279+1280)/4 = 1278.5ms
+
+Average turnaround time for scheduling_algorithm 1:
+Process 1: 320ms
+Process 2: 640ms
+Process 3: 960ms
+Process 4 1280ms
+	Average turnaround time: (320+640+960+1280)/4 = 800ms
+
+Average wait time for scheduling_algorithm 0:
+Process 1: 0ms
+Process 2: 1ms
+Process 3: 2ms
+Process 4: 3ms
+	Average wait time: (0+1+2+3)/4 = 1.5ms
+
+Average wait time for scheduling_algorithm 1:
+Process 1: 0ms
+Process 2: 320ms
+Process 3: 640ms
+Process 4: 960ms
+	Average wait time (0+320+640+960)/4 = 480ms
+
+Exercise 4:
+
+Did you complete Exercise 4A, Exercise 4B, or both for extra credit?
+Completed Exercise 4A & 4B 
+aside from Macro defs in different schedos-(1,2,3,4).c in:
+4A:
+Added in schedos-app.h:
+	"static inline void
+	sys_set_priority(int level) {
+		//Sets the priority level for the current process
+		asm volatile("int %0\n"
+				: : "i" (INT_SYS_USER1),
+				    "a" (level)
+				: "cc", "memory");
+	}"
+
+Added in schedos-kern.h:
+	the data member "int p_priority;" within the typedef of process
+
+Replaced in schedos-kern.c:
+	case INT_SYS_USER1: with
+	"case INT_SYS_USER1:
+		// 'sys_user*' are provided for your convenience, in case you
+		// want to add a system call.
+		/* Your code here (if you want). */
+		current->p_priority = reg->reg_eax;
+		schedule();"
+
+Added in schedos-kern.c inside schedule(void) function:
+"else if (scheduling_algorithm == 2) {
+		int i;
+		while(1) {
+			pid_t highestPriority = 0;
+			pid = (pid + 1) % NPROCS;
+			for(i = 1; i < NPROCS; i++) {
+				if(proc_array[i].p_state == P_RUNNABLE) {
+					if(proc_array[i].p_priority <= proc_array[highestPriority].p_priority
+						 || highestPriority == 0) {
+					}
+				}
+			}
+		if(proc_array[pid].p_priority == proc_array[highestPriority].p_priority 
+			&& proc_array[pid].p_state == P_RUNNABLE)
+				run(&proc_array[pid]);
+		}
+	}"
+
+4B:
+Added in schedos-app.h:
+	"static inline void
+	sys_set_time_share(int share) {
+		//Sets the time share for the current process
+		asm volatile("int %0\n"
+				: : "i" (INT_SYS_USER2),
+				    "a" (share)
+				: "cc", "memory");
+	}"
+
+Added in schedos-kern.h
+	"int p_timeShare;
+	int p_timeRan;" as data members of the struct process
+
+Added in schedos-kern.c after "proc->p_state = P_RUNNABLE"
+		"proc->p_priority = 0; //Exercise 4A, Default to 0 for each process
+		proc->p_timeShare = 0; //Exercise 4B, Default to 0 for each process
+		proc->p_timeRan = -1; //Exercise 4B", First run is a special case
+and
+		"current->p_timeShare = reg->reg_eax;
+		if(current->p_timeRan == -1)
+		current->p_timeRan = 0;
+		schedule()" 
+inside the case INT_SYS_USSER2:
+
+and inside schedule(void) function
+"else if (scheduling_algorithm == 3) {
+		while(1) {
+			if(proc_array[pid].p_state == P_RUNNABLE) {
+				//Initial run check, since correct timeShare aren't set up yet
+				if(proc_array[pid].p_timeRan == -1 && proc_array[pid].p_timeShare == 0) {
+					run(&proc_array[pid]); //Run all processes once so they have chance to
+							       //update their timeShare values	
+				}
+				else //Normal case
+				if(proc_array[pid].p_timeRan >= proc_array[pid].p_timeShare) {
+					proc_array[pid].p_timeRan = 0;
+				}else {
+					proc_array[pid].p_timeRan++;
+					run(&proc_array[pid]);
+				}
+			}
+			pid = (pid + 1) % NPROCS;
+		}
+	}"
+
+Exercise 5:
+The first clock interrupt occurs in the first line, after printing a total of 19 numbers.
+Specifically, the errors occurs after 1,2,3,4,1,2,3,4,1,2,3,4,1,2,3,4,1,2,3 is printed out,
+when process 4 is to be executed.
+The first known timer interrupt occurs here because the steady round-robin order of 1,2,3,4
+at this point is broken.
+
+
+(Exercise 6 is a coding exercise)
+Added in schedos-symbols.ld
+	"PROVIDE(lock = 0x198004);"
+Added in schedos.h
+	"extern uint32_t * volatile lock;" Which will be the global lock shared by processes
+Added in schedos-kern.c inside start(void) function
+	"lock = 0;"
+Replaced the for loop inside schedos-1.c with
+	"for (i = 0; i < RUNCOUNT; i++) {
+			// Write characters to the console, yielding after each one.
+			while(atomic_swap(&lock,1)!=0) { //Polling for the global lock
+				continue;
+			}
+			*cursorpos++ = PRINTCHAR;
+			atomic_swap(&lock,0); //Release the lock
+			sys_yield();
+		}"
+
+Anything else you'd like us to know:
+For 4A, I assume that the priority can be negative and the process with the smallest value,
+even if negative, will run first.
+For 4B, I assume that if timeShare is <=0 then the process need not to be run, since the 
+CPU allocated to it is less than or equal to 0
+
+
+Extra credit exercises:
+
+Extra-Credit Exercise 7
+I implemented the elevator scheduling algorithm for this exercise. What my algorithm does is that
+it starts by first traversing to the right and will continue to schedule the next immediate process
+with the higher pid until it reaches the last process, then it will reverse its direction and traverse
+towards pid = 1, once there it will agian reverse its direction. My scheduling algorithm will continue
+to do this until no more process is left to run. 
+
+Implementing this algorithm did not require any additional system calls, but it did require me to create
+a new global variable in schedos-kern.c to keep track of the current traversing direction, 0 for left, 1
+for right. "int algorithm4Direction;" which is initialized to 1 in start(void). "algorithm4Direction = 1;"
+
+I created a new case inside schedule(void) to implement my new algorithm
+
+"else if (scheduling_algorithm == 4) { //Exercise 7 Extra-credit (elevator scheduling)
+		while(1) {
+			if(algorithm4Direction == 1) {
+				if(pid == NPROCS-1)
+					algorithm4Direction = 0;
+				else
+				pid++;
+			}
+			if(algorithm4Direction == 0) {
+				if(pid == 1)
+					algorithm4Direction = 1;
+				else {
+				pid--;
+				if(pid == 1)
+					continue;
+				}
+			}
+			if(proc_array[pid].p_state == P_RUNNABLE) {
+				run(&proc_array[pid]);
+			}
+		}
+	}"
+
+To test for this algorithm, just set the schedule_algorithm to be 4 and the kernel will automatically use
+this scheduling algorithm.
+
+Extra-Credit Exercise 8
+
+I implemented one more way to print atomically. This time through the use of my own system call.
+I included a new system call inside schedos-app.h:
+	"static inline void
+	 sys_print_char(uint16_t character) {
+		asm volatile("int %0\n"
+			: : "i" (INT_CHAR_PRINT),
+			    "a" (character)
+		 	: "cc", "memory");
+
+	}"
+
+Inside schedos-1.c:
+I defined a new macro "#define EXERCISE8"
+then inside the for-loop used to print out the characters, I created a macro check to see if
+EXERCISE8 is defined, if it is then instead of using *cursorpos++ = PRINTCHAR; to print, I call
+my system call, else I resort back to the default way of printing.
+
+Inside schedos.h:
+I defined a new system call number "#define INT_CHAR_PRINT	52" for my new system call.
+
+
+Inside schedos-kern.c I added a new case for my new system call inside the function interrupt():
+
+	"case INT_CHAR_PRINT:
+			*cursorpos++ = reg->reg_eax;
+			schedule();"
